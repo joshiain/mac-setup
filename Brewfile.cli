@@ -1,0 +1,17 @@
+# Daily development tools. Current releases; separate from GUI apps.
+tap "oven-sh/bun"
+
+# Existing Node approach; no competing runtime manager.
+brew "node"
+brew "oven-sh/bun/bun" # Josh still uses Bun, alongside Node.
+brew "uv" # Python versions and project environments.
+brew "gh"
+
+# Portable terminal essentials; macOS also supplies Git and jq.
+brew "ripgrep"
+brew "fd"
+brew "jq"
+
+# Coding CLIs, distinct from the desktop applications.
+cask "claude-code"
+cask "codex"

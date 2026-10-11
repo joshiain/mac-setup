@@ -1,0 +1,5 @@
+# Created only if ~/.gitconfig is absent. Identity/settings belong in the local file.
+[include]
+    path = ~/.config/mac-setup/gitconfig
+[include]
+    path = ~/.gitconfig.local

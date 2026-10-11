@@ -1,0 +1,6 @@
+# Created only if ~/.zshrc is absent. Local settings take precedence.
+[[ ! -f "$HOME/.config/mac-setup/portable.zsh" ]] || source "$HOME/.config/mac-setup/portable.zsh"
+[[ ! -f "$HOME/.config/mac-setup/shell.zsh" ]] || source "$HOME/.config/mac-setup/shell.zsh"
+[[ ! -f "$HOME/.zshrc.local" ]] || source "$HOME/.zshrc.local"
+# Load highlighting after local widgets and key bindings.
+if (( $+functions[mac_setup_highlighting] )); then mac_setup_highlighting; fi

@@ -1,0 +1,5 @@
+# New defaults for review; no identity, signing keys, URLs, or credentials.
+[init]
+    defaultBranch = main
+[fetch]
+    prune = true

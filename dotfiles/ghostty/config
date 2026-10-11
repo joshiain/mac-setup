@@ -1,0 +1,4 @@
+# Created only if native macOS config is absent. Paths are relative to this file.
+config-file = ../../../.config/mac-setup/ghostty.conf
+# Includes load after their parent; load local overrides last.
+config-file = ?config.local

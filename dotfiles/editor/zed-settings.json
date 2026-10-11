@@ -1,0 +1,11 @@
+{
+  "auto_install_extensions": {
+    "catppuccin-icons": true,
+    "csv": true,
+    "dockerfile": true,
+    "html": true,
+    "rose-pine-theme": true,
+    "svelte": true,
+    "toml": true
+  }
+}

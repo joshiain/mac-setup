@@ -1,0 +1,9 @@
+# Optional conveniences; explicit selection required.
+
+# Activated by the --oh-my-zsh shell profile; --optional only installs packages.
+brew "fzf-tab"
+brew "zsh-autosuggestions"
+brew "zsh-syntax-highlighting"
+brew "fzf"
+brew "bat"
+brew "zoxide"
