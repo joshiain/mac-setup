@@ -1,0 +1,37 @@
+# macOS and editor-local files
+.DS_Store
+.idea/
+.vscode/
+
+# Credentials and private local configuration
+.env
+.env.*
+!.env.example
+.envrc
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.npmrc
+.pypirc
+.ssh/
+.aws/
+.netrc
+*.local
+*.local.*
+backups/
+*.key
+*.pem
+*.p12
+*.pfx
+*.mobileprovision
+credentials*.json
+secrets*.json
+.private/
+
+# Generated machine-local data
+.cache/
+.cache-*/
+tmp/
+*.log
+Brewfile.lock.json
+*.zip
