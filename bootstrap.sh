@@ -5,11 +5,14 @@ umask 077
 
 usage() {
   cat <<'HELP'
-Usage: ./bootstrap.sh [--dry-run | --apply | --check] [selections]
+Usage: ./bootstrap.sh [--dry-run | --apply | --check] [--profile personal|server] [selections]
 Selections: --apps --cli --optional --dotfiles --editors --oh-my-zsh --all
-No selections: --cli --dotfiles. No mode: --dry-run.
+No mode: --dry-run. No profile or selections: personal --cli --dotfiles (legacy).
+Explicit profile with no selections: personal --all; server --apps --cli --dotfiles.
+Selections replace profile defaults. --cli is shared; --apps uses the profile's manifest.
+Server dotfiles include Zsh/Git only; --editors is personal-only.
 --oh-my-zsh includes optional tools and dotfiles, plus Oh My Zsh.
---all includes Oh My Zsh and editor templates; review before applying.
+--all includes Oh My Zsh; only personal includes editor/Ghostty templates.
 --check runs read-only brew bundle checks and reports config plans.
 Existing shell/Git/Ghostty/editor entrypoints are preserved. Managed-fragment
 conflicts are backed up under ~/.local/state/mac-setup/backups before linking.
@@ -18,10 +21,23 @@ HELP
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 mode=dry-run
 mode_selected=0
-apps=0 cli=0 optional=0 dotfiles=0 editors=0 oh_my_zsh=0 selected=0
-for argument in "$@"; do
+profile=personal
+profile_selected=0
+apps=0 cli=0 optional=0 dotfiles=0 editors=0 oh_my_zsh=0 selected=0 all=0
+while [ "$#" -gt 0 ]; do
+  argument=$1
   case "$argument" in
     --help|-h) usage; exit 0 ;;
+    --profile|--profile=*)
+      [ "$profile_selected" -eq 0 ] || die 'Select only one profile.'
+      if [ "$argument" = --profile ]; then
+        [ "$#" -ge 2 ] || die '--profile requires personal or server.'
+        shift; profile=$1
+      else
+        profile=${argument#--profile=}
+      fi
+      case "$profile" in personal|server) ;; *) die "Unknown profile: $profile (use personal or server)." ;; esac
+      profile_selected=1 ;;
     --dry-run|--apply|--check)
       [ "$mode_selected" -eq 0 ] || die 'Select only one mode.'
       mode=${argument#--}; mode_selected=1 ;;
@@ -31,11 +47,27 @@ for argument in "$@"; do
     --dotfiles) dotfiles=1; selected=1 ;;
     --editors) editors=1; selected=1 ;;
     --oh-my-zsh) oh_my_zsh=1; optional=1; dotfiles=1; selected=1 ;;
-    --all) apps=1; cli=1; optional=1; dotfiles=1; editors=1; oh_my_zsh=1; selected=1 ;;
+    --all) all=1; selected=1 ;;
     *) die "Unknown option: $argument" ;;
   esac
+  shift
 done
-if [ "$selected" -eq 0 ]; then cli=1; dotfiles=1; fi
+if [ "$selected" -eq 0 ]; then
+  if [ "$profile_selected" -eq 0 ]; then
+    cli=1; dotfiles=1
+  elif [ "$profile" = personal ]; then
+    all=1
+  else
+    apps=1; cli=1; dotfiles=1
+  fi
+fi
+if [ "$all" -eq 1 ]; then
+  apps=1; cli=1; optional=1; dotfiles=1; oh_my_zsh=1
+  if [ "$profile" = personal ]; then editors=1; fi
+fi
+if [ "$profile" = server ] && [ "$editors" -eq 1 ]; then
+  die '--editors is personal-only; configure the editor on your client Mac.'
+fi
 [ "$(uname -s)" = Darwin ] || die 'This setup targets macOS.'
 [ -n "${HOME:-}" ] && [ -d "$HOME" ] || die 'HOME must be an existing directory.'
 repo_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
@@ -44,7 +76,9 @@ home_dir=$(cd "$HOME" && pwd -P)
 backup_root="$home_dir/.local/state/mac-setup/backups"
 backup_dir="$backup_root/$(date -u +%Y%m%dT%H%M%SZ)-$$"
 manifests=()
-[ "$apps" -eq 0 ] || manifests+=(Brewfile)
+if [ "$apps" -eq 1 ]; then
+  if [ "$profile" = personal ]; then manifests+=(Brewfile); else manifests+=(Brewfile.server); fi
+fi
 [ "$cli" -eq 0 ] || manifests+=(Brewfile.cli)
 [ "$optional" -eq 0 ] || manifests+=(Brewfile.optional)
 for manifest in ${manifests[@]+"${manifests[@]}"}; do
@@ -72,9 +106,11 @@ add_link() {
 if [ "$dotfiles" -eq 1 ]; then
   add_link dotfiles/zsh/portable.zsh .config/mac-setup/portable.zsh managed
   add_link dotfiles/git/portable.gitconfig .config/mac-setup/gitconfig managed
-  add_link dotfiles/ghostty/portable.conf .config/mac-setup/ghostty.conf managed
   add_link dotfiles/zsh/zshrc .zshrc preserve
   add_link dotfiles/git/gitconfig .gitconfig preserve
+fi
+if [ "$dotfiles" -eq 1 ] && [ "$profile" = personal ]; then
+  add_link dotfiles/ghostty/portable.conf .config/mac-setup/ghostty.conf managed
   if [ -e "$home_dir/.config/ghostty/config" ] || [ -L "$home_dir/.config/ghostty/config" ] ||
      [ -e "$home_dir/.config/ghostty/config.ghostty" ] || [ -L "$home_dir/.config/ghostty/config.ghostty" ] ||
      { [ -n "${XDG_CONFIG_HOME:-}" ] && [ -e "$XDG_CONFIG_HOME/ghostty/config.ghostty" ]; }; then
@@ -101,7 +137,7 @@ if [ "$oh_my_zsh" -eq 1 ]; then
 fi
 if [ "$mode" = apply ] && [ "${#sources[@]}" -gt 0 ]; then safe_parent "$backup_dir/item"; fi
 
-printf 'Mode: %s\nRepository: %s\n' "$mode" "$repo_dir"
+printf 'Mode: %s\nProfile: %s\nRepository: %s\n' "$mode" "$profile" "$repo_dir"
 if [ "${#manifests[@]}" -gt 0 ] && [ "$mode" != dry-run ]; then
   command -v brew >/dev/null 2>&1 || die 'Install Homebrew from brew.sh and put it on PATH first.'
   command -v xcode-select >/dev/null 2>&1 || die 'Install Xcode Command Line Tools first.'

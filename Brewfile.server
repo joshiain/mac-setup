@@ -1,0 +1,25 @@
+# Remote development / home server additions to shared Brewfile.cli.
+# Media processing on the development host; kept out of the shared CLI base.
+brew "ffmpeg"
+
+# OrbStack supplies the Docker engine and Compose for ~/dev/homelab.
+# Open it once to complete its own onboarding; this manifest only installs it.
+cask "orbstack"
+
+# Planned remote access and exit-node use; package installation only.
+# Sign-in, permissions, and exit-node activation remain separate manual steps.
+cask "tailscale-app"
+
+# Interactive tools for coding agents on the remote development Mac.
+cask "chatgpt"
+cask "cursor"
+if Hardware::CPU.arm?
+  cask "paper-design"
+  # Same Xcode distribution/architecture guard as personal. Sign in to the App Store first.
+  brew "mas"
+  mas "Xcode", id: 497799835
+end
+
+# Icon Composer is bundled with current Xcode; do not install a second standalone copy.
+# Xcode > Open Developer Tool > Icon Composer. See README for first-launch setup.
+# No personal media apps or service deployments.

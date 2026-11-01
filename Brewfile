@@ -1,5 +1,5 @@
-# Refined app setup, 2026-10-10. Original inventory retained; review README.md.
-# Install current releases; historical inventory is kept separately. See README.md.
+# Personal workstation apps. Kept as Brewfile for existing brew bundle workflows.
+# Server apps live in Brewfile.server; shared development tools in Brewfile.cli.
 # App Store helper; the only CLI formula needed by this app-focused file.
 brew "mas"
 

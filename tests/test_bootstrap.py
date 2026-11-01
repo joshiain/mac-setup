@@ -31,7 +31,7 @@ class BootstrapTests(unittest.TestCase):
         self.home = self.root / "home"
         self.home.mkdir()
         self.repo = self.root / "repo with spaces"
-        shutil.copytree(REPO, self.repo)
+        shutil.copytree(REPO, self.repo, ignore=shutil.ignore_patterns(".git", "__pycache__"))
         self.bin = self.root / "mock-bin"
         self.bin.mkdir()
         self.log = self.root / "commands.log"
@@ -106,6 +106,134 @@ printf '# Mock Oh My Zsh\\n' > "$4/oh-my-zsh.sh"
         p = self.run_setup("--dry-run", "--all")
         self.assertIn("Would back up", p.stdout)
         self.assertEqual(snapshot(self.home), before)
+        self.assertEqual(self.commands(), [])
+
+    def test_explicit_personal_matches_legacy_all(self):
+        legacy = self.run_setup("--all")
+        explicit = self.run_setup("--profile", "personal")
+        self.assertEqual(explicit.stdout, legacy.stdout)
+        self.assertEqual(snapshot(self.home), {})
+        self.assertEqual(self.commands(), [])
+
+    def test_server_default_preview_has_no_desktop_configs_or_commands(self):
+        p = self.run_setup("--profile", "server")
+        self.assertIn("Profile: server", p.stdout)
+        self.assertIn("Brewfile.server", p.stdout)
+        self.assertIn("Brewfile.cli", p.stdout)
+        for unwanted in ["Brewfile.optional", "ghostty", "Library/", ".config/zed", "Would clone"]:
+            self.assertNotIn(unwanted, p.stdout)
+        self.assertEqual(snapshot(self.home), {})
+        self.assertEqual(self.commands(), [])
+
+    def test_server_apply_installs_only_server_and_shared_base(self):
+        self.run_setup("--apply", "--profile", "server")
+        installs = [x for x in self.commands() if x.startswith("bundle install")]
+        self.assertEqual(installs, [
+            f"bundle install --file={self.repo / name} --no-upgrade"
+            for name in ["Brewfile.server", "Brewfile.cli"]
+        ])
+        self.assertTrue((self.home / ".zshrc").exists())
+        self.assertTrue((self.home / ".gitconfig").exists())
+        self.assertFalse((self.home / "Library").exists())
+        self.assertFalse((self.home / ".config/mac-setup/ghostty.conf").exists())
+        self.assertFalse((self.home / ".oh-my-zsh").exists())
+
+    def test_server_all_is_profile_scoped_regardless_of_option_order(self):
+        first = self.run_setup("--profile=server", "--all")
+        last = self.run_setup("--all", "--profile", "server")
+        self.assertEqual(first.stdout, last.stdout)
+        self.run_setup("--apply", "--all", "--profile", "server")
+        installs = [x for x in self.commands() if x.startswith("bundle install")]
+        self.assertEqual(installs, [
+            f"bundle install --file={self.repo / name} --no-upgrade"
+            for name in ["Brewfile.server", "Brewfile.cli", "Brewfile.optional"]
+        ])
+        self.assertTrue((self.home / ".oh-my-zsh/oh-my-zsh.sh").exists())
+        self.assertFalse((self.home / "Library").exists())
+        self.assertFalse((self.home / ".config/zed").exists())
+
+    def test_profile_selections_replace_defaults_and_configs_need_no_brew(self):
+        (self.bin / "brew").unlink()
+        self.run_setup("--apply", "--profile", "server", "--dotfiles")
+        self.assertEqual(self.commands(), [])
+        self.assertTrue((self.home / ".gitconfig").exists())
+        self.assertFalse((self.home / "Library").exists())
+
+    def test_server_check_only_checks_selected_manifests_without_writes(self):
+        self.env["MOCK_CHECK_STATUS"] = "1"
+        self.run_setup("--check", "--profile", "server", success=False)
+        checks = [x for x in self.commands() if x.startswith("bundle check")]
+        self.assertEqual(checks, [
+            f"bundle check --file={self.repo / name} --no-upgrade"
+            for name in ["Brewfile.server", "Brewfile.cli"]
+        ])
+        self.assertEqual(snapshot(self.home), {})
+        self.assertFalse(any("install" in x for x in self.commands()))
+
+    def test_invalid_profiles_and_server_editors_fail_before_mutations(self):
+        for args in [
+            ("--profile",), ("--profile=",), ("--profile", "unknown"),
+            ("--profile", "personal", "--profile", "server"),
+            ("--profile", "server", "--editors"),
+            ("--editors", "--all", "--profile", "server"),
+        ]:
+            with self.subTest(args=args):
+                self.run_setup("--apply", *args, success=False)
+                self.assertEqual(snapshot(self.home), {})
+                self.assertEqual(self.commands(), [])
+
+    def test_missing_server_manifest_fails_before_mutations(self):
+        (self.repo / "Brewfile.server").unlink()
+        self.run_setup("--apply", "--profile", "server", success=False)
+        self.assertEqual(snapshot(self.home), {})
+        self.assertEqual(self.commands(), [])
+
+    def test_server_manifest_packages_on_both_architectures(self):
+        # Evaluate the manifest against a recording DSL, never Homebrew.
+        script = '''require "json"
+module Hardware
+  module CPU
+    def self.arm?; ARGV[0] == "arm"; end
+  end
+end
+packages = []
+recorder = Object.new
+recorder.define_singleton_method(:cask) { |name| packages << ["cask", name] }
+recorder.define_singleton_method(:brew) { |name| packages << ["brew", name] }
+recorder.define_singleton_method(:mas) { |name, options| packages << ["mas", name, options[:id]] }
+recorder.instance_eval(File.read(ARGV[1]), ARGV[1])
+puts JSON.generate(packages)
+'''
+        for architecture in ["arm", "intel"]:
+            with self.subTest(architecture=architecture):
+                p = subprocess.run(
+                    ["/usr/bin/ruby", "-e", script, architecture, str(self.repo / "Brewfile.server")],
+                    env=self.env, text=True, capture_output=True, check=True, timeout=10,
+                )
+                expected = [["brew", "ffmpeg"], ["cask", "orbstack"],
+                            ["cask", "tailscale-app"], ["cask", "chatgpt"], ["cask", "cursor"]]
+                if architecture == "arm":
+                    expected.extend([["cask", "paper-design"], ["brew", "mas"], ["mas", "Xcode", 497799835]])
+                self.assertEqual(json.loads(p.stdout), expected)
+
+    def test_explicit_app_selection_does_not_implicitly_include_shared_cli(self):
+        for profile, manifest in [("server", "Brewfile.server"), ("personal", "Brewfile")]:
+            with self.subTest(profile=profile):
+                p = self.run_setup("--profile", profile, "--apps")
+                self.assertIn(str(self.repo / manifest).replace(" ", "\\ "), p.stdout)
+                self.assertNotIn("Brewfile.cli", p.stdout)
+                self.assertNotIn("Would link", p.stdout)
+                self.assertNotIn("Would create", p.stdout)
+        self.assertEqual(snapshot(self.home), {})
+        self.assertEqual(self.commands(), [])
+
+    def test_explicit_cli_selection_is_identical_across_profiles(self):
+        personal = self.run_setup("--profile", "personal", "--cli")
+        server = self.run_setup("--cli", "--profile", "server")
+        self.assertEqual(personal.stdout.replace("Profile: personal", "Profile: server"), server.stdout)
+        self.assertIn("Brewfile.cli", server.stdout)
+        self.assertNotIn("Brewfile.server", server.stdout)
+        self.assertEqual(snapshot(self.home), {})
         self.assertEqual(self.commands(), [])
 
     def test_configs_only_apply_and_rerun(self):

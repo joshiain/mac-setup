@@ -74,6 +74,10 @@ SCRIPT
         self.run_installer("--apply", "--all")
         self.assertIn("arg=--apply\narg=--all\n", self.log.read_text())
 
+    def test_server_profile_arguments_forwarded(self):
+        self.run_installer("--dry-run", "--profile", "server")
+        self.assertIn("arg=--dry-run\narg=--profile\narg=server\n", self.log.read_text())
+
     def test_existing_checkout_preserved_without_commands(self):
         repo = self.home / "dev/mac-setup"
         repo.mkdir(parents=True)
